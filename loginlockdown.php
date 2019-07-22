@@ -224,7 +224,8 @@ function get_loginlockdownOptions() {
 		'lockout_length' => 60,
 		'lockout_invalid_usernames' => 'no',
 		'mask_login_errors' => 'no',
-		'show_credit_link' => 'yes'
+		'show_credit_link' => 'yes',
+		'force_email' => 'no'
 	);
 	$loginlockdownOptions = get_option("loginlockdownAdminOptions");
 	if ( !empty($loginlockdownOptions) ) {
@@ -284,6 +285,9 @@ function print_loginlockdownAdminPage() {
 		}
 		if (isset($_POST['ll_show_credit_link'])) {
 			$loginlockdownAdminOptions['show_credit_link'] = $_POST['ll_show_credit_link'];
+		}
+		if (isset($_POST['ll_force_email'])) {
+			$loginlockdownAdminOptions['force_email'] = $_POST['ll_force_email'];
 		}
 		update_option("loginlockdownAdminOptions", $loginlockdownAdminOptions);
 		?>
@@ -353,6 +357,9 @@ This helps others know about the plugin so they can protect their blogs as well 
 <input type="radio" name="ll_show_credit_link" value="yes" <?php if( $loginlockdownAdminOptions['show_credit_link'] == "yes" || $loginlockdownAdminOptions['show_credit_link'] == "" ) echo "checked"; ?>>&nbsp;Yes, display the credit link.<br />
 <input type="radio" name="ll_show_credit_link" value="shownofollow" <?php if( $loginlockdownAdminOptions['show_credit_link'] == "shownofollow" ) echo "checked"; ?>>&nbsp;Display the credit link, but add "rel='nofollow'" (ie. do not pass any link juice).<br />
 <input type="radio" name="ll_show_credit_link" value="no" <?php if( $loginlockdownAdminOptions['show_credit_link'] == "no" ) echo "checked"; ?>>&nbsp;No, do not display the credit link.<br />
+<h3><?php _e('Force login with email?', 'loginlockdown') ?></h3>
+<p>Force users to use email address to login instead of usernames.</p>
+<p><input type="radio" name="ll_force_email" value="yes" <?php if( $loginlockdownAdminOptions['force_email'] == "yes" ) echo "checked"; ?>>&nbsp;Yes&nbsp;&nbsp;&nbsp;<input type="radio" name="ll_force_email" value="no" <?php if( $loginlockdownAdminOptions['force_email'] == "no" ) echo "checked"; ?>>&nbsp;No</p>
 <div class="submit">
 <input type="submit" class="button button-primary" name="update_loginlockdownSettings" value="<?php _e('Update Settings', 'loginlockdown') ?>" /></div>
 </form>
@@ -410,6 +417,21 @@ function ll_credit_link(){
 	}
 }
 
+function ll_login_label(){
+   function change_label( $translated_text, $text, $domain ) {
+      if ( 'Username or Email Address' === $text || 'Username' === $text ) {
+         $translated_text = __( 'Email' );
+      }
+      return $translated_text;
+   }
+
+   global $loginlockdownOptions;
+   $use_email = $loginlockdownOptions['force_email'];
+   if($use_email == "yes") {
+      add_filter( 'gettext', 'change_label', 20, 3 );
+   }
+}
+
 //Actions and Filters   
 if ( isset($loginlockdown_db_version) ) {
 	//Actions
@@ -420,12 +442,18 @@ if ( isset($loginlockdown_db_version) ) {
 	$activatestr = str_replace(WP_PLUGIN_DIR . "/", "activate_", __FILE__);
 	add_action($activatestr, 'loginLockdown_install');
 	add_action('login_form', 'll_credit_link');
+   add_action( 'login_head', 'll_login_label' );
+
 
 	remove_filter('authenticate', 'wp_authenticate_username_password', 20, 3);
 	add_filter('authenticate', 'll_wp_authenticate_username_password', 20, 3);
 	//Filters
 	//Functions
 	function ll_wp_authenticate_username_password($user, $username, $password) {
+      global $loginlockdownOptions;
+
+      $use_email = $loginlockdownOptions['force_email'];
+
 		if ( is_a($user, 'WP_User') ) { return $user; }
 
 		if ( empty($username) || empty($password) ) {
@@ -441,6 +469,9 @@ if ( isset($loginlockdown_db_version) ) {
 		}
 
 		$userdata = get_user_by('login',$username);
+      if($use_email == "yes"){
+         $userdata = get_user_by('email',$username);
+      }
 
 		if ( !$userdata ) {
 			return new WP_Error('invalid_username', sprintf(__('<strong>ERROR</strong>: Invalid username. <a href="%s" title="Password Lost and Found">Lost your password</a>?'), site_url('wp-login.php?action=lostpassword', 'login')));
